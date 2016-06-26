@@ -1,0 +1,182 @@
+#!/bin/perl
+
+
+##
+##This script reads a config file, which describes a list
+##of files in order. It then reads those files and parses them
+##for comments matching spcified patterns. The combination of
+##parsed comments, plus extra info pulled from the config file
+##is combined into a single output stream.
+##
+
+# Basic perl includes
+use strict;
+use JSON;
+use DateTime;
+use Getopt::Long;
+use Data::Dumper;
+
+##The comment-doc script uses a number of global variables. These are as follows:
+##- $config: This is the configuration. It is an object, with specific headers and a list of files.
+my $config;
+##- $output: This is the final concatenated output string from the files and config.
+my $output;
+##- $headers: This determines whether to display pandoc markdown headers. The default is no.
+my $headers = 0;
+##- $output_filename: This defaults to stdout, but can be used to store items in a file.
+my $output_filename;
+
+##
+##The configuration file must be a hidden file
+##in the current directory called .comment-doc.json
+sub read_config_file {
+    my $config_object;
+
+    ##The script opens and reads the configuration file.
+    open(my $config_file, "<", ".comment-doc.json") or die "Unable to open .comment-doc.json config file.";
+
+    my $config_text;
+
+    while(<$config_file>) {
+        $config_text .= $_;
+    }
+    ##It converts the JSON to a $config object and validates it.
+    $config_object = decode_json $config_text;
+    
+    return validate_config($config_object);
+}
+
+##
+##The configuration validation ensures that a complete
+##configuration is present with default values if necessary.
+sub validate_config {
+    my $config_object = shift;
+    
+    if(!defined $config_object->{headers}->{title}){
+        $config_object->{headers}->{title} = "";
+    }
+    if(!defined $config_object->{headers}->{author}){
+        $config_object->{headers}->{author} = "";
+    }
+    if(!defined $config_object->{headers}->{date}){
+        $config_object->{headers}->{date} = DateTime->now->ymd;
+    }
+    if(ref($config_object->{files}) ne 'ARRAY'){
+            die "Error: the files element must be an array";
+    }
+    for ( @{$config_object->{files}} ) {
+        if(!defined $_->{file_name}){
+            die "Error in config: each file must have the file_name set:";
+        }
+        if(!defined $_->{pre_lines}){
+            $_->{pre_lines} = [ "" ];
+        }
+        elsif(ref($_->{pre_lines}) ne 'ARRAY'){
+            die "Error: the pre_lines element must be an array";
+        }
+        if(!defined $_->{post_lines}){
+            $_->{post_lines} = [ "" ];
+        }
+        elsif(ref($_->{post_lines}) ne 'ARRAY'){
+            die "Error: the post_lines element must be an array";
+        }
+        if(!defined $_->{start_line}){
+            $_->{start_line} = '^';
+        }
+        if(!defined $_->{end_line}){
+            $_->{end_line} = "\cD";
+        }
+        if(!defined $_->{include_marker}){
+            $_->{include_marker} = "^";
+        }
+    }
+        
+    return $config_object;
+}
+
+##
+##The script reads each file in the list in order and returns
+##the comments extracted at the end.
+sub read_input_file {
+    my $input_file_config = shift;
+    
+    open(my $input_file, "<", $input_file_config->{file_name}) or die "Can't open $input_file_config->{file_name}";
+    
+    my $extracted_comments;
+    
+    ##For each file, it first inserts the configured `pre_lines`
+    ##that precede the file contents, such as metadata about the file
+    ##or lines including an entire block of code.
+    for(@{$input_file_config->{pre_lines}}){
+        ##This step is skipped only if the `pre_lines` are empty.
+        if( !/^$/){
+            $extracted_comments .= $_ . "\n";
+        }
+    }
+    
+    ##
+    my $search_for_comments = 1;
+    
+    ##The script then reads the file.
+    while(<$input_file>) {
+        ##If it finds a special `start_line`, ir will begin searching for comments.
+        ##By default the `start_line` is set to match any line.
+        if( /$input_file_config->{start_line}/) {
+            $search_for_comments = 0;
+        }
+        if($search_for_comments == 0){
+            ##If it finds a comment delineated by the `include_marker`,
+            ##it removes the `include_marker` and adds the comment to the list
+            if( /$input_file_config->{include_marker}/) {
+                s/$input_file_config->{include_marker}//;
+                $extracted_comments .= $_;
+            }
+        }
+        ##It also checks for a special `end_line`, which will stop it from finding further comments.
+        if( /$input_file_config->{end_line}/) {
+            $search_for_comments = 1;
+            last;
+        }
+    }
+    ##Finally, it appends `post_lines` as it did with the `pre_lines`.
+    for(@{$input_file_config->{post_lines}}){
+        if( !/^$/){
+            $extracted_comments .= $_ . "\n";
+        }
+    }
+    
+    close $input_file;
+    
+    return $extracted_comments;
+}
+
+$config = read_config_file;
+
+#print Dumper $config;
+
+##
+##The script allows two options, --headers, and --output $file_name
+GetOptions( 'headers' => \$headers, 'output=s' => \$output_filename );
+
+if($headers == 1){
+    $output .= '%' . $config->{headers}->{title} . "\n";
+    $output .= '%' . $config->{headers}->{author} . "\n";
+    $output .= '%' . $config->{headers}->{date} . "\n\n";
+}
+
+for ( @{$config->{files}} ) {
+   $output .= read_input_file $_;
+}
+
+##
+##The output can be written to an output file or to stdout.
+##
+if($output_filename ne ''){
+    open(my $output_file, ">", $output_filename) or die "Unable to open $output_filename";
+    
+    print $output_file $output;
+}
+else{
+    print $output;
+}
+
