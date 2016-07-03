@@ -15,32 +15,66 @@ use JSON;
 use DateTime;
 use Getopt::Long;
 use Data::Dumper;
+use Env;
+use List::MoreUtils qw(uniq);
 
-##The comment-doc script uses a number of global variables. These are as follows:
-##- $config: This is the configuration. It is an object, with specific headers and a list of files.
+##The comment-doc script uses a number of global variables that can be overridden with command ;ine options. These options are as follows:
+##- --config: This is the configuration. It is an object, with specific headers and a list of files.
 my $config;
-##- $output: This is the final concatenated output string from the files and config.
-my $output;
-##- $headers: This determines whether to display pandoc markdown headers. The default is no.
+##- --headers: This determines whether to display pandoc markdown headers. The default is no.
 my $headers = 0;
-##- $output_filename: This defaults to stdout, but can be used to store items in a file.
-my $output_filename;
+##- --output: This defaults to stdout, but can be used to store items in a file.
+my $output_filename = "/dev/stdout";
 
 ##
-##The configuration file must be a hidden file
-##in the current directory called .comment-doc.json
-sub read_config_file {
+##Default config files. This is a list of default config files in order of precedence: ./.comment-doc.json, $HOME/.comment-doc.json, and /etc/comment-doc.json.
+my @config_filenames = ("./.comment-doc.json", "$HOME/.comment-doc.json", "/etc/comment-doc.json" );
+
+my $custom_config = "";
+
+# These will be added later
+my $input = "/dev/stdin";
+my $start_line = '^';
+my $end_line = "\cD";
+my $include_marker = "^";
+my @output_filenames;
+my @outputs;
+
+##
+##The configuration file must be correctly formatted json passed at the command line
+##or loaded from a config file.
+sub read_config {
     my $config_object;
-
-    ##The script opens and reads the configuration file.
-    open(my $config_file, "<", ".comment-doc.json") or die "Unable to open .comment-doc.json config file.";
-
+    my $config_file;
     my $config_text;
+    
+    ##The script first checks to see if a config has been passed
+    ##at the command line.
+    if($custom_config ne ""){
+        ##If it has, it tries to open the file name or parses the 
+        ##string as JSON and returns without trying to open a config file.
+        open($config_file, "<", $custom_config) or
+        ($config_object = decode_json $custom_config and
+        return validate_config($config_object));
+    }
+    ##If no special config is found, it tries to open and read the configuration files in order.
+    else {
+        ##
+        foreach my $config_filename (@config_filenames){
+            ##As soon as it opens a config file successfully, it uses it, and ignores the other files.
+            open($config_file, "<", $config_filename) and last ;
+        }
+    }
 
     while(<$config_file>) {
         $config_text .= $_;
     }
-    ##It converts the JSON to a $config object and validates it.
+    #If all configs are empty, it sets a default empty config and uses that.
+    if ($config_text eq ""){
+        $config_text = '{}';
+    }
+    
+    ##It either case, it converts the JSON to a $config object and validates it.
     $config_object = decode_json $config_text;
     
     return validate_config($config_object);
@@ -51,7 +85,34 @@ sub read_config_file {
 ##configuration is present with default values if necessary.
 sub validate_config {
     my $config_object = shift;
-    
+
+    if(!defined $config_object->{defaults}->{file_name}){
+        $config_object->{defaults}->{file_name} = $input;
+    }
+    if(!defined $config_object->{defaults}->{pre_lines}){
+        $config_object->{defaults}->{pre_lines} = [ "" ];
+    }
+    elsif(ref($config_object->{defaults}->{pre_lines}) ne 'ARRAY'){
+        die "Error: the pre_lines element must be an array";
+    }
+    if(!defined $config_object->{defaults}->{post_lines}){
+        $config_object->{defaults}->{post_lines} = [ "" ];
+    }
+    elsif(ref($config_object->{defaults}->{post_lines}) ne 'ARRAY'){
+        die "Error: the post_lines element must be an array";
+    }
+    if(!defined $config_object->{defaults}->{start_line}){
+        $config_object->{defaults}->{start_line} = $start_line;
+    }
+    if(!defined $config_object->{defaults}->{end_line}){
+        $config_object->{defaults}->{end_line} = $end_line;
+    }
+    if(!defined $config_object->{defaults}->{include_marker}){
+        $config_object->{defaults}->{include_marker} = $include_marker;
+    }
+    if(!defined $config_object->{defaults}->{output}){
+        $config_object->{defaults}->{output} = $output_filename;
+    }
     if(!defined $config_object->{headers}->{title}){
         $config_object->{headers}->{title} = "";
     }
@@ -61,33 +122,36 @@ sub validate_config {
     if(!defined $config_object->{headers}->{date}){
         $config_object->{headers}->{date} = DateTime->now->ymd;
     }
-    if(ref($config_object->{files}) ne 'ARRAY'){
+    if((defined $config_object->{files}) and (ref($config_object->{files}) ne 'ARRAY')){
             die "Error: the files element must be an array";
     }
     for ( @{$config_object->{files}} ) {
         if(!defined $_->{file_name}){
-            die "Error in config: each file must have the file_name set:";
+            $_->{file_name} = $config_object->{defaults}->{file_name};
         }
         if(!defined $_->{pre_lines}){
-            $_->{pre_lines} = [ "" ];
+            $_->{pre_lines} = $config_object->{defaults}->{pre_lines};
         }
         elsif(ref($_->{pre_lines}) ne 'ARRAY'){
             die "Error: the pre_lines element must be an array";
         }
         if(!defined $_->{post_lines}){
-            $_->{post_lines} = [ "" ];
+            $_->{post_lines} = $config_object->{defaults}->{post_lines};
         }
         elsif(ref($_->{post_lines}) ne 'ARRAY'){
             die "Error: the post_lines element must be an array";
         }
         if(!defined $_->{start_line}){
-            $_->{start_line} = '^';
+            $_->{start_line} = $config_object->{defaults}->{start_line};
         }
         if(!defined $_->{end_line}){
-            $_->{end_line} = "\cD";
+            $_->{end_line} = $config_object->{defaults}->{end_line};
         }
         if(!defined $_->{include_marker}){
-            $_->{include_marker} = "^";
+            $_->{include_marker} = $config_object->{defaults}->{include_marker};
+        }
+        if(!defined $_->{output}){
+            $_->{output} = $config_object->{defaults}->{output};
         }
     }
         
@@ -119,7 +183,7 @@ sub read_input_file {
     
     ##The script then reads the file.
     while(<$input_file>) {
-        ##If it finds a special `start_line`, ir will begin searching for comments.
+        ##If it finds a special `start_line`, it will begin searching for comments.
         ##By default the `start_line` is set to match any line.
         if( /$input_file_config->{start_line}/) {
             $search_for_comments = 0;
@@ -150,33 +214,53 @@ sub read_input_file {
     return $extracted_comments;
 }
 
-$config = read_config_file;
+
+
+
+
+GetOptions( 'headers' => \$headers, 'output=s' => \$output_filename, 'config=s' => \$custom_config );
+
+$config = read_config;
 
 #print Dumper $config;
 
-##
-##The script allows two options, --headers, and --output $file_name
-GetOptions( 'headers' => \$headers, 'output=s' => \$output_filename );
-
-if($headers == 1){
-    $output .= '%' . $config->{headers}->{title} . "\n";
-    $output .= '%' . $config->{headers}->{author} . "\n";
-    $output .= '%' . $config->{headers}->{date} . "\n\n";
-}
-
 for ( @{$config->{files}} ) {
-   $output .= read_input_file $_;
+    push @output_filenames, $_->{output};
+}
+@output_filenames = uniq @output_filenames;
+for my $filename (@output_filenames){
+    my $file->{name} = $filename;
+    push @outputs, $file;
 }
 
-##
-##The output can be written to an output file or to stdout.
-##
-if($output_filename ne ''){
-    open(my $output_file, ">", $output_filename) or die "Unable to open $output_filename";
+#print Dumper @outputs;
+
+for my $output (@outputs){
+    $output->{string} = "";
     
-    print $output_file $output;
-}
-else{
-    print $output;
-}
+    if($headers == 1){
+        $output->{string} .= '%' . $config->{headers}->{title} . "\n";
+        $output->{string} .= '%' . $config->{headers}->{author} . "\n";
+        $output->{string} .= '%' . $config->{headers}->{date} . "\n\n";
+    }
+    
+    foreach my $file ( @{$config->{files}} ) {
+        if($output->{name} eq $file->{output}){
+            $output->{string} .= read_input_file $file;
+        }
+    }
+
+        
+    ##
+    ##The output can be written to an output file or to stdout.
+    ##
+    open(my $output_file, ">", $output->{name}) or die "Unable to open $output->{name}";
+        
+        print $output_file $output->{string};
+    }
+
+# 
+# else{
+#     print $output;
+# }
 

@@ -1,5 +1,8 @@
 {
-    "headers": {
+    "defaults": {
+        "output" : "README.md"
+    },
+    "headers": { 
         "title" : "comment-doc(1)",
         "author" : "Christopher Miersma"
     },    
