@@ -229,17 +229,21 @@ $config = read_config;
 
 debug $config;
 
+# For each input, add it's output to the outputs
 for ( @{$config->{inputs}} ) {
     push @outputs, $_->{output};
 }
+
+# Reduce to unique outputs
 @outputs = uniq @outputs;
+
+# Convert outputs to out buffers, with name and later a content string.
 for my $filename (@outputs){
     my $file->{name} = $filename;
     push @out_buffers, $file;
 }
 
-#print Dumper @out_buffers;
-
+# Process the out_buffers, add a string to hold the contents to each and fill it.
 for my $out_buffer (@out_buffers){
     $out_buffer->{string} = "";
     
@@ -250,6 +254,7 @@ for my $out_buffer (@out_buffers){
         $out_buffer->{string} .= '%' . $config->{headers}->{date} . "\n\n";
     }
     
+    # For each input, if it matches the current output process the file.
     foreach my $file ( @{$config->{inputs}} ) {
         if($out_buffer->{name} eq $file->{output}){
             $out_buffer->{string} .= read_input_file $file;
@@ -260,13 +265,12 @@ for my $out_buffer (@out_buffers){
     ##
     ##The output can be written to an output file or to stdout.
     ##
+    # Open the file for writing.
     open(my $output_file, ">", $out_buffer->{name}) or die "Unable to open $out_buffer->{name}";
-        
-        print $output_file $out_buffer->{string};
-    }
-
-# 
-# else{
-#     print $output;
-# }
+    
+    debug $out_buffer;
+    
+    # Add the string to the file.
+    print $output_file $out_buffer->{string};
+}
 
