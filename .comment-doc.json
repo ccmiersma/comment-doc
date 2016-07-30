@@ -6,19 +6,19 @@
         "title" : "comment-doc(1)",
         "author" : "Christopher Miersma"
     },    
-    "files" : [
+    "inputs" : [
         {
-            "file_name" : "README.md",
-            "start_line" : "Comment-Doc",
-            "end_line" : "^---$"
+            "input" : "README.md",
+            "begin" : "Comment-Doc",
+            "end" : "^---$"
         },        
         {
-            "file_name" : "comment-doc",
-            "start_line" : "##",
+            "input" : "comment-doc",
+            "begin" : "##",
             "include_marker" : "^.*##"
         },
         {
-            "file_name" : ".comment-doc.json",
+            "input" : ".comment-doc.json",
             "pre_lines" : [
             "The following is a sample .comment-doc.json file:",
             "```" ],

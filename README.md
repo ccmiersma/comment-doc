@@ -24,6 +24,7 @@ is combined into a single output stream.
 
 The comment-doc script uses a number of global variables that can be overridden with command ;ine options. These options are as follows:
 - --config: This is the configuration. It is an object, with specific headers and a list of files.
+- --debug: This determines whether to dump certain variables for debugging. The default is no.
 - --headers: This determines whether to display pandoc markdown headers. The default is no.
 - --output: This defaults to stdout, but can be used to store items in a file.
 
@@ -51,11 +52,11 @@ or lines including an entire block of code.
 This step is skipped only if the `pre_lines` are empty.
 
 The script then reads the file.
-If it finds a special `start_line`, it will begin searching for comments.
-By default the `start_line` is set to match any line.
+If it finds a special `begin` regexp, it will begin searching for comments.
+By default `begin` is set to match any line.
 If it finds a comment delineated by the `include_marker`,
 it removes the `include_marker` and adds the comment to the list
-It also checks for a special `end_line`, which will stop it from finding further comments.
+It also checks for a special `end` regexp, which will stop it from finding further comments.
 Finally, it appends `post_lines` as it did with the `pre_lines`.
 
 The output can be written to an output file or to stdout.
@@ -70,19 +71,19 @@ The following is a sample .comment-doc.json file:
         "title" : "comment-doc(1)",
         "author" : "Christopher Miersma"
     },    
-    "files" : [
+    "inputs" : [
         {
-            "file_name" : "README.md",
-            "start_line" : "Comment-Doc",
-            "end_line" : "^---$"
+            "input" : "README.md",
+            "begin" : "Comment-Doc",
+            "end" : "^---$"
         },        
         {
-            "file_name" : "comment-doc",
-            "start_line" : "##",
+            "input" : "comment-doc",
+            "begin" : "##",
             "include_marker" : "^.*##"
         },
         {
-            "file_name" : ".comment-doc.json",
+            "input" : ".comment-doc.json",
             "pre_lines" : [
             "The following is a sample .comment-doc.json file:",
             "```" ],

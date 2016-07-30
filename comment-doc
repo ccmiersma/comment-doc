@@ -21,10 +21,12 @@ use List::MoreUtils qw(uniq);
 ##The comment-doc script uses a number of global variables that can be overridden with command ;ine options. These options are as follows:
 ##- --config: This is the configuration. It is an object, with specific headers and a list of files.
 my $config;
+##- --debug: This determines whether to dump certain variables for debugging. The default is no.
+my $debug = 0;
 ##- --headers: This determines whether to display pandoc markdown headers. The default is no.
 my $headers = 0;
 ##- --output: This defaults to stdout, but can be used to store items in a file.
-my $output_filename = "/dev/stdout";
+my $output = "/dev/stdout";
 
 ##
 ##Default config files. This is a list of default config files in order of precedence: ./.comment-doc.json, $HOME/.comment-doc.json, and /etc/comment-doc.json.
@@ -34,11 +36,13 @@ my $custom_config = "";
 
 # These will be added later
 my $input = "/dev/stdin";
-my $start_line = '^';
-my $end_line = "\cD";
+my $begin = '^';
+my $end = "\cD";
 my $include_marker = "^";
-my @output_filenames;
 my @outputs;
+my @out_buffers;
+
+GetOptions( 'headers' => \$headers, 'debug' => \$debug,  'output=s' => \$output, 'config=s' => \$custom_config );
 
 ##
 ##The configuration file must be correctly formatted json passed at the command line
@@ -86,8 +90,8 @@ sub read_config {
 sub validate_config {
     my $config_object = shift;
 
-    if(!defined $config_object->{defaults}->{file_name}){
-        $config_object->{defaults}->{file_name} = $input;
+    if(!defined $config_object->{defaults}->{input}){
+        $config_object->{defaults}->{input} = $input;
     }
     if(!defined $config_object->{defaults}->{pre_lines}){
         $config_object->{defaults}->{pre_lines} = [ "" ];
@@ -101,17 +105,17 @@ sub validate_config {
     elsif(ref($config_object->{defaults}->{post_lines}) ne 'ARRAY'){
         die "Error: the post_lines element must be an array";
     }
-    if(!defined $config_object->{defaults}->{start_line}){
-        $config_object->{defaults}->{start_line} = $start_line;
+    if(!defined $config_object->{defaults}->{begin}){
+        $config_object->{defaults}->{begin} = $begin;
     }
-    if(!defined $config_object->{defaults}->{end_line}){
-        $config_object->{defaults}->{end_line} = $end_line;
+    if(!defined $config_object->{defaults}->{end}){
+        $config_object->{defaults}->{end} = $end;
     }
     if(!defined $config_object->{defaults}->{include_marker}){
         $config_object->{defaults}->{include_marker} = $include_marker;
     }
     if(!defined $config_object->{defaults}->{output}){
-        $config_object->{defaults}->{output} = $output_filename;
+        $config_object->{defaults}->{output} = $output;
     }
     if(!defined $config_object->{headers}->{title}){
         $config_object->{headers}->{title} = "";
@@ -122,12 +126,12 @@ sub validate_config {
     if(!defined $config_object->{headers}->{date}){
         $config_object->{headers}->{date} = DateTime->now->ymd;
     }
-    if((defined $config_object->{files}) and (ref($config_object->{files}) ne 'ARRAY')){
-            die "Error: the files element must be an array";
+    if((defined $config_object->{inputs}) and (ref($config_object->{inputs}) ne 'ARRAY')){
+            die "Error: the inputs element must be an array";
     }
-    for ( @{$config_object->{files}} ) {
-        if(!defined $_->{file_name}){
-            $_->{file_name} = $config_object->{defaults}->{file_name};
+    for ( @{$config_object->{inputs}} ) {
+        if(!defined $_->{input}){
+            $_->{input} = $config_object->{defaults}->{input};
         }
         if(!defined $_->{pre_lines}){
             $_->{pre_lines} = $config_object->{defaults}->{pre_lines};
@@ -141,11 +145,11 @@ sub validate_config {
         elsif(ref($_->{post_lines}) ne 'ARRAY'){
             die "Error: the post_lines element must be an array";
         }
-        if(!defined $_->{start_line}){
-            $_->{start_line} = $config_object->{defaults}->{start_line};
+        if(!defined $_->{begin}){
+            $_->{begin} = $config_object->{defaults}->{begin};
         }
-        if(!defined $_->{end_line}){
-            $_->{end_line} = $config_object->{defaults}->{end_line};
+        if(!defined $_->{end}){
+            $_->{end} = $config_object->{defaults}->{end};
         }
         if(!defined $_->{include_marker}){
             $_->{include_marker} = $config_object->{defaults}->{include_marker};
@@ -158,13 +162,14 @@ sub validate_config {
     return $config_object;
 }
 
+
 ##
 ##The script reads each file in the list in order and returns
 ##the comments extracted at the end.
 sub read_input_file {
     my $input_file_config = shift;
     
-    open(my $input_file, "<", $input_file_config->{file_name}) or die "Can't open $input_file_config->{file_name}";
+    open(my $input_file, "<", $input_file_config->{input}) or die "Can't open $input_file_config->{input}";
     
     my $extracted_comments;
     
@@ -183,9 +188,9 @@ sub read_input_file {
     
     ##The script then reads the file.
     while(<$input_file>) {
-        ##If it finds a special `start_line`, it will begin searching for comments.
-        ##By default the `start_line` is set to match any line.
-        if( /$input_file_config->{start_line}/) {
+        ##If it finds a special `begin` regexp, it will begin searching for comments.
+        ##By default `begin` is set to match any line.
+        if( /$input_file_config->{begin}/) {
             $search_for_comments = 0;
         }
         if($search_for_comments == 0){
@@ -196,8 +201,8 @@ sub read_input_file {
                 $extracted_comments .= $_;
             }
         }
-        ##It also checks for a special `end_line`, which will stop it from finding further comments.
-        if( /$input_file_config->{end_line}/) {
+        ##It also checks for a special `end` regexp, which will stop it from finding further comments.
+        if( /$input_file_config->{end}/) {
             $search_for_comments = 1;
             last;
         }
@@ -214,39 +219,40 @@ sub read_input_file {
     return $extracted_comments;
 }
 
-
-
-
-
-GetOptions( 'headers' => \$headers, 'output=s' => \$output_filename, 'config=s' => \$custom_config );
+sub debug {
+    if ($debug == 1){
+        print Dumper shift;
+    }
+}
 
 $config = read_config;
 
-#print Dumper $config;
+debug $config;
 
-for ( @{$config->{files}} ) {
-    push @output_filenames, $_->{output};
+for ( @{$config->{inputs}} ) {
+    push @outputs, $_->{output};
 }
-@output_filenames = uniq @output_filenames;
-for my $filename (@output_filenames){
+@outputs = uniq @outputs;
+for my $filename (@outputs){
     my $file->{name} = $filename;
-    push @outputs, $file;
+    push @out_buffers, $file;
 }
 
-#print Dumper @outputs;
+#print Dumper @out_buffers;
 
-for my $output (@outputs){
-    $output->{string} = "";
+for my $out_buffer (@out_buffers){
+    $out_buffer->{string} = "";
     
+    # If we want headers, add them to the string
     if($headers == 1){
-        $output->{string} .= '%' . $config->{headers}->{title} . "\n";
-        $output->{string} .= '%' . $config->{headers}->{author} . "\n";
-        $output->{string} .= '%' . $config->{headers}->{date} . "\n\n";
+        $out_buffer->{string} .= '%' . $config->{headers}->{title} . "\n";
+        $out_buffer->{string} .= '%' . $config->{headers}->{author} . "\n";
+        $out_buffer->{string} .= '%' . $config->{headers}->{date} . "\n\n";
     }
     
-    foreach my $file ( @{$config->{files}} ) {
-        if($output->{name} eq $file->{output}){
-            $output->{string} .= read_input_file $file;
+    foreach my $file ( @{$config->{inputs}} ) {
+        if($out_buffer->{name} eq $file->{output}){
+            $out_buffer->{string} .= read_input_file $file;
         }
     }
 
@@ -254,9 +260,9 @@ for my $output (@outputs){
     ##
     ##The output can be written to an output file or to stdout.
     ##
-    open(my $output_file, ">", $output->{name}) or die "Unable to open $output->{name}";
+    open(my $output_file, ">", $out_buffer->{name}) or die "Unable to open $out_buffer->{name}";
         
-        print $output_file $output->{string};
+        print $output_file $out_buffer->{string};
     }
 
 # 
