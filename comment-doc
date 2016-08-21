@@ -2,11 +2,16 @@
 
 
 ##
+##Description
+##-----------
+##
 ##This script reads a config file, which describes a list
-##of files in order. It then reads those files and parses them
-##for comments matching specified patterns. The combination of
+##of inputs and outputs. For each output file, it matches the associated
+##inputs. The inputs are defined by the output of an arbitrary command,
+##but default to using the `find` command to search a path for a given pattern.
+##The output is parse for comments matching the specified include marker. The combination of
 ##parsed comments, plus extra info pulled from the config file
-##is combined into a single output stream.
+##is combined into an output stream which is written to the corresponding output.
 ##
 
 # Basic perl includes
@@ -18,14 +23,14 @@ use Data::Dumper;
 use Env;
 use List::MoreUtils qw(uniq);
 
-##The comment-doc script uses a number of global variables that can be overridden with command ;ine options. These options are as follows:
+##The comment-doc script uses a number of global variables that can be overridden with command line options. These options are as follows:
 ##- --config: This is the configuration. It is an object, with specific headers and a list of files.
 my $config;
 ##- --debug: This determines whether to dump certain variables for debugging. The default is no.
 my $debug = 0;
 ##- --headers: This determines whether to display pandoc markdown headers. The default is no.
 my $headers = 0;
-##- --output: This defaults to stdout, but can be used to store items in a file.
+##- --output: This defaults to /dev/stdout, but can be used to store items in a file. This option only modifies the default output. It does not override outputs defined in the config.
 my $output = "/dev/stdout";
 
 ##
@@ -35,7 +40,9 @@ my @config_filenames = ("./.comment-doc.json", "$HOME/.comment-doc.json", "/etc/
 my $custom_config = "";
 
 # These will be added later
-my $input = "/dev/stdin";
+my $pattern = "*";
+my $path = "./";
+my $find_args = "-maxdepth 1 -type f";
 my $begin = '^';
 my $end = "\cD";
 my $include_marker = "^";
@@ -90,8 +97,14 @@ sub read_config {
 sub validate_config {
     my $config_object = shift;
 
-    if(!defined $config_object->{defaults}->{input}){
-        $config_object->{defaults}->{input} = $input;
+    if(!defined $config_object->{defaults}->{pattern}){
+        $config_object->{defaults}->{pattern} = $pattern;
+    }
+    if(!defined $config_object->{defaults}->{path}){
+        $config_object->{defaults}->{path} = $path;
+    }
+    if(!defined $config_object->{defaults}->{find_args}){
+        $config_object->{defaults}->{find_args} = $find_args;
     }
     if(!defined $config_object->{defaults}->{pre_lines}){
         $config_object->{defaults}->{pre_lines} = [ "" ];
@@ -129,9 +142,18 @@ sub validate_config {
     if((defined $config_object->{inputs}) and (ref($config_object->{inputs}) ne 'ARRAY')){
             die "Error: the inputs element must be an array";
     }
+    if(!defined $config_object->{inputs}){
+        $config_object->{inputs} = [ {} ];
+    }
     for ( @{$config_object->{inputs}} ) {
-        if(!defined $_->{input}){
-            $_->{input} = $config_object->{defaults}->{input};
+        if(!defined $_->{pattern}){
+            $_->{pattern} = $config_object->{defaults}->{pattern};
+        }
+        if(!defined $_->{path}){
+            $_->{path} = $config_object->{defaults}->{path};
+        }
+        if(!defined $_->{find_args}){
+            $_->{find_args} = $config_object->{defaults}->{find_args};
         }
         if(!defined $_->{pre_lines}){
             $_->{pre_lines} = $config_object->{defaults}->{pre_lines};
@@ -169,7 +191,18 @@ sub validate_config {
 sub read_input_file {
     my $input_file_config = shift;
     
-    open(my $input_file, "<", $input_file_config->{input}) or die "Can't open $input_file_config->{input}";
+    my $pattern = $input_file_config->{pattern};
+    my $path = $input_file_config->{path};
+    my $find_args = $input_file_config->{find_args};    
+    
+    my $command;
+    if(!defined $input_file_config->{command}){
+        $command = "for file in \`find $path $find_args -name \"$pattern\"\`; do cat \$file; done";
+    }
+    else {
+        $command = $input_file_config->{command};
+    }
+    my @input = split(/^/, `$command`);
     
     my $extracted_comments;
     
@@ -187,7 +220,7 @@ sub read_input_file {
     my $search_for_comments = 1;
     
     ##The script then reads the file.
-    while(<$input_file>) {
+    foreach(@input) {
         ##If it finds a special `begin` regexp, it will begin searching for comments.
         ##By default `begin` is set to match any line.
         if( /$input_file_config->{begin}/) {
@@ -213,8 +246,6 @@ sub read_input_file {
             $extracted_comments .= $_ . "\n";
         }
     }
-    
-    close $input_file;
     
     return $extracted_comments;
 }

@@ -16,17 +16,22 @@ Copy the comment-doc script to a location in your path.
 
 ---
 
-This script reads a config file, which describes a list
-of files in order. It then reads those files and parses them
-for comments matching specified patterns. The combination of
-parsed comments, plus extra info pulled from the config file
-is combined into a single output stream.
+Description
+-----------
 
-The comment-doc script uses a number of global variables that can be overridden with command ;ine options. These options are as follows:
+This script reads a config file, which describes a list
+of inputs and outputs. For each output file, it matches the associated
+inputs. The inputs are defined by the output of an arbitrary command,
+but default to using the `find` command to search a path for a given pattern.
+The output is parse for comments matching the specified include marker. The combination of
+parsed comments, plus extra info pulled from the config file
+is combined into an output stream which is written to the corresponding output.
+
+The comment-doc script uses a number of global variables that can be overridden with command line options. These options are as follows:
 - --config: This is the configuration. It is an object, with specific headers and a list of files.
 - --debug: This determines whether to dump certain variables for debugging. The default is no.
 - --headers: This determines whether to display pandoc markdown headers. The default is no.
-- --output: This defaults to stdout, but can be used to store items in a file.
+- --output: This defaults to /dev/stdout, but can be used to store items in a file. This option only modifies the default output. It does not override outputs defined in the config.
 
 Default config files. This is a list of default config files in order of precedence: ./.comment-doc.json, $HOME/.comment-doc.json, and /etc/comment-doc.json.
 
@@ -73,17 +78,17 @@ The following is a sample .comment-doc.json file:
     },    
     "inputs" : [
         {
-            "input" : "README.md",
+            "pattern" : "README.md",
             "begin" : "Comment-Doc",
             "end" : "^---$"
         },        
         {
-            "input" : "comment-doc",
+            "pattern" : "comment-doc",
             "begin" : "##",
             "include_marker" : "^.*##"
         },
         {
-            "input" : ".comment-doc.json",
+            "pattern" : ".comment-doc.json",
             "pre_lines" : [
             "The following is a sample .comment-doc.json file:",
             "```" ],

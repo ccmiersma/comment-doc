@@ -8,17 +8,17 @@
     },    
     "inputs" : [
         {
-            "input" : "README.md",
+            "pattern" : "README.md",
             "begin" : "Comment-Doc",
             "end" : "^---$"
         },        
         {
-            "input" : "comment-doc",
+            "pattern" : "comment-doc",
             "begin" : "##",
             "include_marker" : "^.*##"
         },
         {
-            "input" : ".comment-doc.json",
+            "pattern" : ".comment-doc.json",
             "pre_lines" : [
             "The following is a sample .comment-doc.json file:",
             "```" ],
