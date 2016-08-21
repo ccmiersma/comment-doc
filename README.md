@@ -64,7 +64,12 @@ it removes the `include_marker` and adds the comment to the list
 It also checks for a special `end` regexp, which will stop it from finding further comments.
 Finally, it appends `post_lines` as it did with the `pre_lines`.
 
-The output can be written to an output file or to stdout.
+Because multiple outputs can be defined, processing is done on a per output basis.
+A list of unique outputs is calculated.
+As each output is processed, it processes all the inputs.
+For each input, if it matches the current output, it process the input and adds it to the output stream.
+
+The default output is /dev/stdout, but can be any arbitrary file.
 
 The following is a sample .comment-doc.json file:
 ```

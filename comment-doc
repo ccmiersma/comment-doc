@@ -195,6 +195,7 @@ sub read_input_file {
     my $path = $input_file_config->{path};
     my $find_args = $input_file_config->{find_args};    
     
+    # We perform validation of the command here, to avoid problems with scope.
     my $command;
     if(!defined $input_file_config->{command}){
         $command = "for file in \`find $path $find_args -name \"$pattern\"\`; do cat \$file; done";
@@ -260,12 +261,14 @@ $config = read_config;
 
 debug $config;
 
+##
+##Because multiple outputs can be defined, processing is done on a per output basis.
 # For each input, add it's output to the outputs
 for ( @{$config->{inputs}} ) {
     push @outputs, $_->{output};
 }
 
-# Reduce to unique outputs
+##A list of unique outputs is calculated.
 @outputs = uniq @outputs;
 
 # Convert outputs to out buffers, with name and later a content string.
@@ -285,7 +288,8 @@ for my $out_buffer (@out_buffers){
         $out_buffer->{string} .= '%' . $config->{headers}->{date} . "\n\n";
     }
     
-    # For each input, if it matches the current output process the file.
+    ##As each output is processed, it processes all the inputs.
+    ##For each input, if it matches the current output, it process the input and adds it to the output stream.
     foreach my $file ( @{$config->{inputs}} ) {
         if($out_buffer->{name} eq $file->{output}){
             $out_buffer->{string} .= read_input_file $file;
@@ -294,7 +298,7 @@ for my $out_buffer (@out_buffers){
 
         
     ##
-    ##The output can be written to an output file or to stdout.
+    ##The default output is /dev/stdout, but can be any arbitrary file.
     ##
     # Open the file for writing.
     open(my $output_file, ">", $out_buffer->{name}) or die "Unable to open $out_buffer->{name}";
