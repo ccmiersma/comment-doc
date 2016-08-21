@@ -18,7 +18,7 @@ Copy the comment-doc script to a location in your path.
 
 This script reads a config file, which describes a list
 of files in order. It then reads those files and parses them
-for comments matching spcified patterns. The combination of
+for comments matching specified patterns. The combination of
 parsed comments, plus extra info pulled from the config file
 is combined into a single output stream.
 
